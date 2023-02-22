@@ -21,7 +21,18 @@ payments as (
 ),
 
 -- logical CTE's
+completed_payments as (
+    
+        select 
+            
+            orderid as order_id
+            , max(created) as payment_finalized_date 
+            , sum(amount) / 100.0 as total_amount_paid
 
+        from payments
+        where status <> 'fail'
+        group by 1
+)
 
 
 -- Final CTE
@@ -29,7 +40,7 @@ payments as (
 -- Single Select Statement
 
 
-    paid_orders as (
+    ,paid_orders as (
         
         select 
             
@@ -39,36 +50,27 @@ payments as (
             orders.status as order_status,
             p.total_amount_paid,
             p.payment_finalized_date,
-            c.first_name as customer_first_name,
-            c.last_name as customer_last_name
+            customers.first_name as customer_first_name,
+            customers.last_name as customer_last_name
 
         from orders
         
-        left join (
-            select 
-                
-                orderid as order_id
-                , max(created) as payment_finalized_date 
-                , sum(amount) / 100.0 as total_amount_paid
+        left join  completed_payments as p on orders.id = p.order_id
 
-            from payments
-            where status <> 'fail'
-            group by 1) p on orders.id = p.order_id
-
-        left join customers c on orders.user_id = c.id ),
+        left join customers on orders.user_id = customers.id ),
 
 customer_orders as (
     
         select 
             
-            c.id as customer_id
-            , min(order_date) as first_order_date
-            , max(order_date) as most_recent_order_date
+            customers.id as customer_id
+            , min(orders.order_date) as first_order_date
+            , max(orders.order_date) as most_recent_order_date
             , count(orders.id) as number_of_orders
         
-        from customers c 
-        left join orders as orders
-        on orders.user_id = c.id 
+        from customers 
+        left join orders
+        on orders.user_id = customers.id 
         group by 1)
 
 select
@@ -76,11 +78,9 @@ select
     p.*
     , row_number() over (order by p.order_id) as transaction_seq
     , row_number() over (partition by customer_id order by p.order_id) as customer_sales_seq
-    , case when c.first_order_date = p.order_placed_at
-    then 'new'
-    else 'return' end as nvsr
+    , case  when c.first_order_date = p.order_placed_at then 'new' else 'return' end as nvsr
     , x.clv_bad as customer_lifetime_value
-    c.first_order_date as fdos
+    , c.first_order_date as fdos
     
     from paid_orders p
     left join customer_orders as c using (customer_id)
