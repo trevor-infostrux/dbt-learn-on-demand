@@ -47,7 +47,7 @@ paid_orders as (
         left join customers on orders.user_id = customers.id 
 ),
 
-customer_orders as (
+/* customer_orders as (
     select 
         customers.id as customer_id
         , min(orders.order_date) as first_order_date
@@ -56,7 +56,7 @@ customer_orders as (
     from customers 
     left join orders on orders.user_id = customers.id 
     group by 1
-),
+), */
 
 -- Final CTE
 
@@ -78,8 +78,14 @@ final as (
         row_number() over (partition by paid_orders.customer_id order by paid_orders.order_id) as customer_sales_seq,
 
         -- new vs returning
-        case when customer_orders.first_order_date = paid_orders.order_placed_at
-        then 'new'
+        /* case when customer_orders.first_order_date = paid_orders.order_placed_at
+        then 'new' */
+        case 
+            when (
+                rank() over (
+                    partition by customer_id order by order_placed_at, order_id
+                ) = 1
+            ) then 'new'
         else 'return' end as nvsr,
         
         --customer lifetime value
@@ -88,12 +94,14 @@ final as (
             order by paid_orders.order_placed_at
         ) as customer_lifetime_value,
 
-        customer_orders.first_order_date as fdos
+        first_value(paid_orders.order_placed_at) over (
+            partition by paid_orders.customer_id
+            order by paid_orders.order_placed_at
+        ) as fdos
     from paid_orders
-    left join customer_orders on customer_orders.customer_id=paid_orders.customer_id
-    order by order_id
 )
 
 -- Simple Select Statement
 
 select * from final
+order by order_id
